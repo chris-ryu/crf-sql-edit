@@ -1,0 +1,16 @@
+# --- user data & secrets: never commit ---
+*.crf
+*.crfe
+sql_out/
+# any DB credentials / connection configs people might drop here
+*.properties
+!*.properties.example
+
+# --- proprietary vendor jars (bring your own licensed ClipReport) ---
+lib/
+*.jar
+!dist/crf-sql-edit.jar
+
+# --- build output ---
+build/
+*.class
