@@ -2,7 +2,7 @@
 .SYNOPSIS
   Compile src\CrfSqlEdit.java into dist\crf-sql-edit.jar.
 .PARAMETER Lib
-  Folder containing the ClipReport v5 engine jars (ClipReport5.0.*.jar, ClipReport5.0-Common.jar).
+  Folder containing the ClipReport engine jars (ClipReport5.0*.jar for list/dump/diff; patch also needs ClipReport4.0*.jar).
 .EXAMPLE
   .\build.ps1 -Lib "C:\path\to\clipreport\lib"
 #>

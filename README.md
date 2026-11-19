@@ -11,12 +11,13 @@ ClipReport 엔진의 공개 API(`com.clipsoft.clipreport.base.Rexpert4`)로 `.cr
 
 ## 요구사항
 
-- **Java 7+** 런타임(실행용). 소스 재빌드 시에만 JDK 필요.
-- **ClipReport v5 엔진 JAR** (본인 설치본에서 제공), 예:
-  - `ClipReport5.0.<build>.jar`
-  - `ClipReport5.0-Common.jar`
+- **Java 7+** 런타임(실행용). 소스 재빌드 시에만 JDK 필요. Windows·macOS·Linux 모두 된다(디자이너 불필요).
+- **ClipReport 엔진 JAR** (본인 설치본에서 제공), 예:
+  - `ClipReport5.0.<build>.jar`, `ClipReport5.0-Common.jar` — `list`·`dump`·`diff`
+  - `ClipReport4.0-<build>.jar`, `ClipReport4.0-Common.jar` — **`patch`에 필요**(아래 "엔진 버전과 `patch`")
 
-  한 폴더에 모아 두고 `-Lib` 인자로 지정한다. 이 JAR들은 상용이라 저장소에 **포함하지 않는다**.
+  한 폴더에 모아 두고 `-Lib`(PowerShell)·`-l`(셸) 인자로 지정한다. ClipReport 웹앱의 `WEB-INF/lib`에는 보통 4와 5가
+  함께 들어 있다. 이 JAR들은 상용이라 저장소에 **포함하지 않는다**.
 
 JDK 없이 바로 실행할 수 있도록, 이 도구의 자체 컴파일 결과물 `dist/crf-sql-edit.jar`(Java 7 타깃)를 포함한다.
 
@@ -42,13 +43,26 @@ $lib = "C:\path\to\clipreport\lib"
 .\crf-sql.ps1 -Lib $lib patch "r.crf" "r.new.crf" "DS1=.\sql_out\DS1.sql" "DS2=.\sql_out\DS2.sql"
 ```
 
+## 사용법 (macOS / Linux)
+
+```bash
+lib=/path/to/clipreport/lib            # 또는 export CRF_SQL_LIB=...
+./crf-sql.sh -l "$lib" list  report.crf
+./crf-sql.sh -l "$lib" dump  report.crf ./sql_out
+./crf-sql.sh -l "$lib" patch report.crf report.new.crf DS1=./sql_out/DS1.sql
+```
+
+Java는 `$JAVA_HOME/bin/java`, 없으면 PATH의 `java`를 쓴다.
+
 ### 래퍼 없이 실행
 
+`patch`를 쓰려면 ClipReport 4 JAR을 5보다 **앞에** 둔다:
+
 ```
-java -Dfile.encoding=UTF-8 -cp "dist/crf-sql-edit.jar;<lib>/ClipReport5.0.<build>.jar;<lib>/ClipReport5.0-Common.jar" CrfSqlEdit list report.crf
+java -Dfile.encoding=UTF-8 -cp "dist/crf-sql-edit.jar;<lib>/ClipReport4.0-<build>.jar;<lib>/ClipReport4.0-Common.jar;<lib>/ClipReport5.0.<build>.jar;<lib>/ClipReport5.0-Common.jar" CrfSqlEdit patch in.crf out.crf DS1=DS1.sql
 ```
 
-(macOS/Linux는 클래스패스 구분자로 `;` 대신 `:` 사용.)
+(macOS/Linux는 클래스패스 구분자로 `;` 대신 `:` 사용. `list`·`dump`·`diff`만 쓸 때는 5 JAR만 있어도 된다.)
 
 ## 명령
 
@@ -81,11 +95,27 @@ java -Dfile.encoding=UTF-8 -cp "dist/crf-sql-edit.jar;<lib>/ClipReport5.0.<build
 - 쿼리 SQL만 다룬다. Pre/Post SQL, 쿼리가 비어 있던 데이터셋에 쿼리를 넣는 일은 `set`으로만 할 수 있다.
 - 입력과 같은 경로로는 쓰지 않는다. SQL이 하나도 바뀌지 않으면 입력의 바이트 단위 사본을 쓴다.
 
+## 엔진 버전과 `patch`
+
+ClipReport 4 JAR과 5 JAR은 패키지·클래스 이름(`com.clipsoft.clipreport.base.Rexpert4` 등)이 같아서, 클래스패스에서
+먼저 오는 쪽이 쓰인다. 읽기(`list`·`dump`·`diff`)는 어느 쪽이든 같지만 쓰기 결과가 다르다:
+
+- **4의 writer**는 디자이너처럼 SQL을 암호화해 저장한다. 그래서 그 레코드를 디자이너가 저장한 파일에서 찾아
+  바꿔 끼울 수 있다 — `patch`가 이 방식이다.
+- **5의 writer**는 SQL을 평문 UTF-16으로 저장한다. 이 레코드는 디자이너 파일 어디에도 없으므로 `patch`가 할 수
+  없다. 이때 `patch`는 쓰인 엔진 JAR 이름과 함께 그 이유를 알리고 아무것도 쓰지 않는다.
+
+`crf-sql.ps1`·`crf-sql.sh`는 4 JAR을 항상 먼저 둔다(없으면 `patch`에서 경고). 이전 버전의 PowerShell 래퍼는
+파일 이름순으로 넣어 우연히 4가 앞에 왔고, 5 JAR만 넣는 예전 README의 직접 실행 예시나 다른 래퍼로는 `patch`가
+`changes in more places`라는, 원인과 다른 오류로 거부됐다.
+
+패치된 파일은 5 엔진으로도 같은 SQL로 읽힌다(운영 서버가 5만 쓰는 경우 확인 방법: 5 JAR만 든 폴더로
+`list`/`diff <원본> <결과>` — 차이는 바꾼 쿼리 수만큼).
+
 ## 왜 `patch`인가 (`set`의 한계)
 
 `set`은 엔진의 writer로 리포트 전체를 다시 직렬화한다. 그런데 엔진의 writer는 읽은 것을 전부 되쓰지 않는다.
-엔진 5.0.226으로 디자이너가 저장한 리포트들을 `set`한 뒤 `diff`로 비교하면, SQL 외에 리포트당 100~480개
-값이 달라진다:
+디자이너가 저장한 리포트들을 `set`한 뒤 `diff`로 비교하면, SQL 외에 리포트당 수십~480개 값이 달라진다:
 
 - 포맷이 REX30에서 REX31로 바뀐다;
 - 표의 분할선이 "없음"에서 "실선 0.75"로, 대각선 두께가 0.5에서 0.75로 바뀐다;
@@ -105,6 +135,10 @@ java -Dfile.encoding=UTF-8 -cp "dist/crf-sql-edit.jar;<lib>/ClipReport5.0.<build
 
 ```powershell
 .\build.ps1 -Lib $lib      # src\CrfSqlEdit.java -> dist\crf-sql-edit.jar 컴파일
+```
+
+```bash
+./build.sh -l "$lib"       # macOS/Linux. Java 7 타깃이라 JDK 8~19가 필요하다(JDK 20부터는 7을 대상으로 컴파일하지 못한다)
 ```
 
 ## 테스트

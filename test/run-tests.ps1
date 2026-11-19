@@ -6,7 +6,7 @@
   supply your own ClipReport engine jars and one or more .crf files. Each report needs at least two
   SQL datasets. Nothing is written next to the reports: all work happens in a temp folder.
 .PARAMETER Lib
-  Folder containing the ClipReport v5 engine jars.
+  Folder containing the ClipReport engine jars (version 4 and 5, as a ClipReport web app ships them).
 .PARAMETER Crf
   One or more .crf files to test against. The whole suite runs once per file.
 .EXAMPLE
@@ -221,6 +221,25 @@ foreach ($source in $Crf) {
       $r = Invoke-Tool @('patch', $in, $o, "$ds2=$f")
       Assert-Equal 0 $r.Code "patch exit code; output: $($r.Text)"
       Assert-True (Test-SameBytes $in $o) 'the copy differs from the input'
+    }
+
+    # --- patch: the engine on the classpath must write SQL the way the Designer stores it ---
+    $v5jars = @(Get-ChildItem -Path $Lib -Filter 'ClipReport5*.jar')
+    $v4jars = @(Get-ChildItem -Path $Lib -Filter 'ClipReport4*.jar')
+    if ($v5jars.Count -gt 0 -and $v4jars.Count -gt 0) {
+      Test-Case 'patch with only the version 5 engine stops, names the engine and writes no file' {
+        $v5 = Join-Path $work 'lib-v5-only'
+        New-Item -ItemType Directory -Force $v5 | Out-Null
+        $v5jars | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $v5 }
+        $o = Join-Path $work 'v5-only.crf'
+        $out = & $tool -Lib $v5 patch $in $o "$ds1=$sql1" 2>&1 | ForEach-Object { "$_" }
+        $code = $LASTEXITCODE; $text = @($out) -join "`n"
+        Assert-True ($code -ne 0 -and $code -ne 2) "expected a refusal, got exit code $code; output: $text"
+        Assert-True (-not (Test-Path $o)) 'an output file was written'
+        Assert-True ($text -match 'plain text' -and $text -match 'ClipReport5') "the message does not explain the engine; output: $text"
+      }
+    } else {
+      Write-Host "SKIP  engine test: -Lib needs both ClipReport4*.jar and ClipReport5*.jar"
     }
 
     # --- set: still works, but says what it costs ---

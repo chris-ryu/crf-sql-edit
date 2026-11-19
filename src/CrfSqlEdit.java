@@ -67,6 +67,13 @@ import java.util.TreeMap;
  * The input file is never modified in place; writes always go to <out.crf>.
  * Datasets that are not SQL-based (stored procedure / CSV / XML / JSON / SAP)
  * are left untouched.
+ *
+ * Engine jars: ClipReport 4 (ClipReport4.0-*.jar) and 5 (ClipReport5.0*.jar) ship the same
+ * package names, so the first on the classpath answers. list, dump and diff work with either.
+ * patch needs the version 4 writer: it stores SQL encrypted, as the Designer does, so its records
+ * can be found in and swapped into a Designer-saved file. The version 5 writer stores SQL as plain
+ * text, which matches nothing in such a file; patch then stops and says so. The wrappers
+ * (crf-sql.ps1, crf-sql.sh) put the version 4 jar first.
  */
 public class CrfSqlEdit {
 
@@ -206,10 +213,10 @@ public class CrfSqlEdit {
         System.out.println(ok ? "[VERIFY PASS] all SQL changes round-tripped through write/read"
                               : "[VERIFY FAIL] a change did not persist");
         if (!ok) System.exit(1);
-        System.out.println("WARNING: set lets the engine rewrite the whole report, and the engine's writer does not write"
-                + " back everything it read (seen with engine 5.0.226: table split-line settings and the check/radio"
-                + " images are reset). To change SQL and nothing else use patch; to see what this rewrite changed run:"
-                + " diff <in.crf> <out.crf>");
+        System.out.println("WARNING: set lets the engine (" + engineJar() + ") rewrite the whole report, and the engine's"
+                + " writer does not write back everything it read (seen on Designer-saved reports: table split-line"
+                + " settings, line widths and the check/radio images are reset). To change SQL and nothing else use"
+                + " patch; to see what this rewrite changed run: diff <in.crf> <out.crf>");
     }
 
     // ---- patch ----
@@ -239,6 +246,16 @@ public class CrfSqlEdit {
             expected.put(e.getKey(), nz(e.getValue().getQueryString()));
 
         byte[] baseline = Rexpert4.write(rf);   // the engine's serialisation with the SQL untouched
+        // The records swapped in below come from the loaded engine's writer, so they must be stored the way the
+        // Designer stores them. Without this check a plain-text writer surfaces only as the misleading
+        // "changes in more places" error further down.
+        for (String name : q.keySet())
+            if (writesPlainText(baseline, nz(byName.get(name).getQueryString())))
+                throw new IllegalStateException("cannot patch '" + name + "' with this engine (" + engineJar() + "):"
+                        + " its writer stores SQL as plain text, unlike the Designer, so the stored SQL record cannot be"
+                        + " matched in the input. Put the ClipReport 4 engine jar (ClipReport4.0-*.jar) before the"
+                        + " version 5 jars on the classpath (crf-sql.ps1 and crf-sql.sh do this); list, dump and diff"
+                        + " work with either engine");
         byte[] work = original;
         int changed = 0;
         for (Map.Entry<String, String> e : q.entrySet()) {
@@ -375,6 +392,27 @@ public class CrfSqlEdit {
                     ? "cannot patch '" + name + "': its stored SQL record was not found in the input file"
                     : "cannot patch '" + name + "': replacing its stored SQL record did not give the expected SQL");
         return result;
+    }
+
+    /**
+     * True when the start of the SQL appears as plain UTF-16LE text in an engine serialisation. The ClipReport 5
+     * writer stores query strings this way; the ClipReport 4 writer and the Designer store them encrypted.
+     */
+    static boolean writesPlainText(byte[] serialised, String sql) {
+        String probe = sql.trim();
+        if (probe.length() < 16) return false;   // too short to tell a query from other text
+        probe = probe.substring(0, Math.min(48, probe.length()));
+        return indexOf(serialised, probe.getBytes(StandardCharsets.UTF_16LE), 0) >= 0;
+    }
+
+    /** File name of the jar the engine class was loaded from (version 4 and 5 jars share package names). */
+    static String engineJar() {
+        try {
+            java.security.CodeSource cs = Rexpert4.class.getProtectionDomain().getCodeSource();
+            return cs == null ? "unknown jar" : new File(cs.getLocation().toURI()).getName();
+        } catch (Exception e) {
+            return "unknown jar";
+        }
     }
 
     static boolean readsAs(byte[] report, Map<String, String> expected) {
